@@ -1,3 +1,24 @@
+TRIM(SUBSTRING("bv_CDW_ODS_OFC_Ra_Customer_Trx_Lines_All_clean"."Attribute_8",
+    POSITION('|' IN SUBSTRING("bv_CDW_ODS_OFC_Ra_Customer_Trx_Lines_All_clean"."Attribute_8",
+        POSITION('|' IN SUBSTRING("bv_CDW_ODS_OFC_Ra_Customer_Trx_Lines_All_clean"."Attribute_8",
+            POSITION('|' IN SUBSTRING("bv_CDW_ODS_OFC_Ra_Customer_Trx_Lines_All_clean"."Attribute_8",
+                POSITION('|' IN "bv_CDW_ODS_OFC_Ra_Customer_Trx_Lines_All_clean"."Attribute_8") + 1)) + 1)) + 1)) + 1,
+    POSITION('|' IN SUBSTRING("bv_CDW_ODS_OFC_Ra_Customer_Trx_Lines_All_clean"."Attribute_8",
+        POSITION('|' IN SUBSTRING("bv_CDW_ODS_OFC_Ra_Customer_Trx_Lines_All_clean"."Attribute_8",
+            POSITION('|' IN SUBSTRING("bv_CDW_ODS_OFC_Ra_Customer_Trx_Lines_All_clean"."Attribute_8",
+                POSITION('|' IN "bv_CDW_ODS_OFC_Ra_Customer_Trx_Lines_All_clean"."Attribute_8") + 1)) + 1)) + 1)) - 1))
+
+
+
+
+
+segment 2 : TRIM(SUBSTRING("bv_CDW_ODS_OFC_Ra_Customer_Trx_Lines_All_clean"."Attribute_8",
+    POSITION('|' IN "bv_CDW_ODS_OFC_Ra_Customer_Trx_Lines_All_clean"."Attribute_8") + 1,
+    POSITION('|' IN SUBSTRING("bv_CDW_ODS_OFC_Ra_Customer_Trx_Lines_All_clean"."Attribute_8",
+        POSITION('|' IN "bv_CDW_ODS_OFC_Ra_Customer_Trx_Lines_All_clean"."Attribute_8") + 1)) - 1))
+
+
+
 To effectively join the specified Oracle Receivables tables with RA_CUSTOMER_TRX_ALL as the driving table, it's essential to understand the relationships and appropriate join conditions between these tables. Here's a detailed breakdown:
 
 1. RA_CUSTOMER_TRX_ALL and RA_CUSTOMER_TRX_LINES_ALL
