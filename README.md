@@ -1,3 +1,44 @@
+
+Approach 1: Chained INSTR with SUBSTRING (Optimized for 5th and 6th Segments)
+This extends the chained INSTR approach to extract both segments in a single query by computing the 4th and 5th delimiter positions and the string’s end.
+
+VQL Query
+vql
+
+
+
+SELECT
+  SUBSTRING(
+    input_column,
+    INSTR(input_column, '|', INSTR(input_column, '|', INSTR(input_column, '|', INSTR(input_column, '|') + 1) + 1) + 1) + 1,  -- After 4th delimiter
+    INSTR(input_column, '|', INSTR(input_column, '|', INSTR(input_column, '|', INSTR(input_column, '|', INSTR(input_column, '|') + 1) + 1) + 1) + 1) - 
+    INSTR(input_column, '|', INSTR(input_column, '|', INSTR(input_column, '|', INSTR(input_column, '|') + 1) + 1) + 1) - 1
+  ) AS fifth_segment,
+  SUBSTRING(
+    input_column,
+    INSTR(input_column, '|', INSTR(input_column, '|', INSTR(input_column, '|', INSTR(input_column, '|', INSTR(input_column, '|') + 1) + 1) + 1) + 1) + 1,  -- After 5th delimiter
+    LENGTH(input_column) - INSTR(input_column, '|', INSTR(input_column, '|', INSTR(input_column, '|', INSTR(input_column, '|', INSTR(input_column, '|') + 1) + 1) + 1) + 1)
+  ) AS sixth_segment
+FROM your_table;
+Explanation:
+
+5th Segment:
+Start: After 4th delimiter (delimiter4 + 1, e.g., 18 in "123|abc|45 6|xyz |3aq|a56").
+Length: Between 4th and 5th delimiters (delimiter5 - delimiter4 - 1, e.g., 21 - 17 - 1 = 3).
+Result: "3aq".
+6th Segment:
+Start: After 5th delimiter (delimiter5 + 1, e.g., 22).
+Length: From 5th delimiter to end (LENGTH - delimiter5, e.g., 23 - 21 = 2).
+Result: "a56".
+Empty Segments: Handles cases like "|||3aq||" (5th: "3aq", 6th: "").
+Results:
+
+"123|abc|45 6|xyz |3aq|a56" → 5th: "3aq", 6th: "a56".
+"123|abc||xyz |3aq|" → 5th: "3aq", 6th: "".
+"|||3aq||" → 5th: "3aq", 6th: "".
+
+
+
 TRIM(SUBSTRING("bv_CDW_ODS_OFC_Ra_Customer_Trx_Lines_All_clean"."Attribute_8",
     POSITION('|' IN SUBSTRING("bv_CDW_ODS_OFC_Ra_Customer_Trx_Lines_All_clean"."Attribute_8",
         POSITION('|' IN SUBSTRING("bv_CDW_ODS_OFC_Ra_Customer_Trx_Lines_All_clean"."Attribute_8",
