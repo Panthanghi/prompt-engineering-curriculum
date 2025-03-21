@@ -1,4 +1,35 @@
 
+CREATE OR REPLACE VIEW split_fixed_segments AS
+SELECT
+  input_column,
+  SUBSTRING(input_column, 1, INSTR(input_column, '|') - 1) AS segment1,
+  SUBSTRING(input_column, INSTR(input_column, '|') + 1, 
+            INSTR(input_column, '|', INSTR(input_column, '|') + 1) - INSTR(input_column, '|') - 1) AS segment2,
+  SUBSTRING(input_column, INSTR(input_column, '|', INSTR(input_column, '|') + 1) + 1, 
+            INSTR(input_column, '|', INSTR(input_column, '|', INSTR(input_column, '|') + 1) + 1) - 
+            INSTR(input_column, '|', INSTR(input_column, '|') + 1) - 1) AS segment3,
+  SUBSTRING(input_column, INSTR(input_column, '|', INSTR(input_column, '|', INSTR(input_column, '|') + 1) + 1) + 1, 
+            INSTR(input_column, '|', INSTR(input_column, '|', INSTR(input_column, '|', INSTR(input_column, '|') + 1) + 1) + 1) - 
+            INSTR(input_column, '|', INSTR(input_column, '|', INSTR(input_column, '|') + 1) + 1) - 1) AS segment4,
+  SUBSTRING(input_column, INSTR(input_column, '|', INSTR(input_column, '|', INSTR(input_column, '|', INSTR(input_column, '|') + 1) + 1) + 1) + 1, 
+            INSTR(input_column, '|', INSTR(input_column, '|', INSTR(input_column, '|', INSTR(input_column, '|', INSTR(input_column, '|') + 1) + 1) + 1) + 1) - 
+            INSTR(input_column, '|', INSTR(input_column, '|', INSTR(input_column, '|', INSTR(input_column, '|') + 1) + 1) + 1) - 1) AS segment5,
+  SUBSTRING(input_column, INSTR(input_column, '|', INSTR(input_column, '|', INSTR(input_column, '|', INSTR(input_column, '|', INSTR(input_column, '|') + 1) + 1) + 1) + 1) + 1, 
+            LENGTH(input_column) - INSTR(input_column, '|', INSTR(input_column, '|', INSTR(input_column, '|', INSTR(input_column, '|', INSTR(input_column, '|') + 1) + 1) + 1) + 1)) AS segment6
+FROM your_table;
+
+SELECT 
+  segment5 AS fifth_segment,
+  segment6 AS sixth_segment
+FROM split_fixed_segments;
+
+
+
+
+
+
+
+
 Approach 1: Chained INSTR with SUBSTRING (Optimized for 5th and 6th Segments)
 This extends the chained INSTR approach to extract both segments in a single query by computing the 4th and 5th delimiter positions and the string’s end.
 
