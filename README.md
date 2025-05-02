@@ -1,4 +1,122 @@
 
+
+
+import csv
+
+def infer_column_logic(col_name, data_type):
+    col_lower = col_name.lower()
+    if 'date' in col_lower or col_lower.endswith(('dt', 'dat', 'tim')) or 'time' in col_lower:
+        return [
+            f"{{{{ default_to_number('{col_name}') }}}} as {col_name}_ORIG",
+            f"{{{{ string_to_date('{col_name}') }}}} as {col_name}"
+        ]
+    elif data_type.upper() in ['DECIMAL', 'NUMERIC', 'NUMBER']:
+        return [f"{{{{ default_to_number('{col_name}') }}}} as {col_name}"]
+    else:
+        return [col_name]
+
+def read_columns(csv_path):
+    columns = []
+    with open(csv_path, newline='') as csvfile:
+        reader = csv.DictReader(csvfile)
+        for row in reader:
+            columns.append((row['column_name'], row['data_type']))
+    return columns
+
+def read_unique_keys(csv_path):
+    keys = []
+    with open(csv_path, newline='') as csvfile:
+        reader = csv.DictReader(csvfile)
+        for row in reader:
+            keys.append(row['column_name'])
+    return keys
+
+def generate_model(table_name, columns, unique_keys):
+    all_col_names = [col for col, _ in columns]
+
+    for key in unique_keys:
+        if key not in all_col_names:
+            print(f"Warning: Key column '{key}' not found in data type list!")
+
+    surrogate_key = f"{{{{ generate_surrogate_key([{', '.join([f\"'{k}'\" for k in unique_keys])}]) }}}}"
+    transformed_cols = []
+    for col, dtype in columns:
+        transformed_cols.extend(infer_column_logic(col, dtype))
+
+    col_list_str = ",\n        ".join(transformed_cols)
+    final_select = ",\n".join([col.split(' as ')[-1] if ' as ' in col else col for col in transformed_cols])
+
+    template = f"""
+{{{{ 
+    config(
+        materialized='incremental',
+        unique_key={unique_keys if len(unique_keys) > 1 else f"'{unique_keys[0]}'"},
+        tags=["ods", "infopro", "scheduled-nightly"]
+    ) 
+}}}}
+
+WITH SOURCE AS (
+    SELECT *, 1 AS BATCH_KEY_ID FROM {{{{ source('STAGING','STG_IFP_{table_name}') }}}}
+    {{% if is_incremental() %}}
+    WHERE to_timestamp_tz(SUBSTRING(CAPXTIMESTAMP,1,17),'YYYYMMDDHHMISSFF') >= '{{{{ get_max_event_time('SYS_CDC_DTM') }}}}'
+    {{% endif %}}
+),
+INS_BATCH_ID AS (
+    SELECT TO_NUMBER(TO_VARCHAR(CURRENT_TIMESTAMP, 'YYYYMMDDHH24MISSFF3')) AS INS_BATCH_ID, 1 AS BATCH_KEY_ID
+),
+TRANSFORMED AS (
+    SELECT 
+        {surrogate_key} as PK_ODS_IFP_{table_name}_ID,
+        CURRENT_TIMESTAMP as SYS_CREATE_DTM,
+        INS_BATCH_ID AS SYS_EXEC_ID,
+        CURRENT_TIMESTAMP AS SYS_LAST_UPDATE_DTM,
+        'I' AS SYS_ACTION_CD,
+        'N' AS SYS_DEL_IND,
+        'Y' AS SYS_VALID_IND,
+        '' AS SYS_INVALID_DESC,
+        to_timestamp_tz(SUBSTRING(CAPXTIMESTAMP,1,17),'YYYYMMDDHHMISSFF') AS SYS_CDC_DTM,
+        CAPXUSER AS SYS_CDC_LIB,
+        {col_list_str}
+    FROM SOURCE
+    LEFT JOIN INS_BATCH_ID USING (BATCH_KEY_ID)
+),
+DEDUPED AS (
+    SELECT *, ROW_NUMBER() OVER(PARTITION BY {', '.join(unique_keys)} ORDER BY SYS_CDC_DTM DESC) AS ROW_NUM FROM TRANSFORMED
+),
+FINAL AS (
+    SELECT * FROM DEDUPED WHERE ROW_NUM = 1
+)
+
+SELECT 
+PK_ODS_IFP_{table_name}_ID,
+SYS_CREATE_DTM,
+SYS_EXEC_ID,
+SYS_LAST_UPDATE_DTM,
+SYS_ACTION_CD,
+SYS_DEL_IND,
+SYS_VALID_IND,
+SYS_INVALID_DESC,
+SYS_CDC_DTM,
+SYS_CDC_LIB,
+{final_select}
+FROM FINAL
+""".strip()
+    return template
+
+# Example usage:
+columns = read_columns('/mnt/data/bipsd.csv')
+unique_keys = read_unique_keys('/mnt/data/bipsd_keys.csv')
+sql_code = generate_model('BIPSD', columns, unique_keys)
+
+with open('/mnt/data/BIPSD_dbt_model.sql', 'w') as f:
+    f.write(sql_code)
+
+print("DBT model generated and saved to BIPSD_dbt_model.sql.")
+
+
+-------
+
+
 CREATE OR REPLACE VIEW split_fixed_segments AS
 SELECT
   input_column,
