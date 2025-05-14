@@ -1,4 +1,201 @@
+{{ 
+config(
+    materialized='incremental',
+    unique_key='PK_ODS_IFP_BIPIHH_ID',
+    merge_no_update_columns=['SYS_CREATE_DTM'],
+    tags=["ods", "infopro", "scheduled-nightly"],
+    pre_hook="
+    {% if is_incremental() %}
+    EXECUTE IMMEDIATE $$
+    BEGIN
+      IF (EXISTS (
+        SELECT * FROM information_schema.tables
+        WHERE table_schema = 'ODS' AND table_name = 'ODS_IFP_BIPIHH'
+      )) THEN
+        UPDATE {{ this }}
+        SET SYS_DEL_IND = 'Y', 
+            SYS_ACTION_CD = 'D', 
+            SYS_LAST_UPDATE_DTM = CURRENT_TIMESTAMP
+        WHERE PK_ODS_IFP_BIPIHH_CHKSUM_ID IN (
+          SELECT
+            MD5(
+              COALESCE(TRIM(IHCOMP), '') || '|' ||
+              COALESCE(TRIM(IHINAC), '') || '|' ||
+              COALESCE(TO_VARCHAR(\"IHINV#\"), '') || '|' ||
+              COALESCE(TO_VARCHAR(IHOBDT), '') || '|' ||
+              COALESCE(TO_VARCHAR(IHARBH), '') || '|' ||
+              COALESCE(TO_VARCHAR(IHINDT), '') || '|' ||
+              COALESCE(TO_VARCHAR(\"IHREF#\"), '') || '|' ||
+              COALESCE(TRIM(IHMSID), '') || '|' ||
+              COALESCE(TO_VARCHAR(IHIAMT), '') || '|' ||
+              COALESCE(TRIM(IHINFF), '') || '|' ||
+              COALESCE(TRIM(IHINGP), '') || '|' ||
+              COALESCE(TO_VARCHAR(IHREFA), '') || '|' ||
+              COALESCE(TRIM(IHUSER), '') || '|' ||
+              COALESCE(TO_VARCHAR(IHUDAT), '') || '|' ||
+              COALESCE(TO_VARCHAR(IHUTIM), '')
+            )
+          FROM {{ source('STAGING','STG_IFP_BIPIHH') }}
+          WHERE PRIMARY_KEY_CHANGE = 'Y'
+            AND to_timestamp_tz(SUBSTRING(DTL__CAPXTIMESTAMP, 1, 17), 'YYYYMMDDHHMISSFF3') >= '{{ get_max_event_time('SYS_CDC_DTM') }}'
+        );
+        COMMIT;
+      END IF;
+    END;
+    $$;
+    {% endif %}
+    "
+)
+}}
 
+WITH GET_NEW_RECORDS AS (
+    SELECT *, 1 AS BATCH_KEY_ID 
+    FROM {{ source('STAGING','STG_IFP_BIPIHH') }}
+    {% if is_incremental() %}
+    WHERE to_timestamp_tz(SUBSTRING(DTL__CAPXTIMESTAMP, 1, 17), 'YYYYMMDDHHMISSFF') >= '{{ get_max_event_time('SYS_CDC_DTM') }}'
+    {% endif %}
+),
+
+INS_BATCH_ID AS (
+    SELECT TO_NUMBER(TO_VARCHAR(CURRENT_TIMESTAMP, 'YYYYMMDDHH24MISSFF3')) AS INS_BATCH_ID, 1 AS BATCH_KEY_ID
+),
+
+CURRENT_DELTA_DATA AS (
+    SELECT 
+        {{ generate_surrogate_key(['PK_ODS_IFP_BIPIHH_CHKSUM_ID']) }} AS PK_ODS_IFP_BIPIHH_ID,
+        
+        MD5(
+          COALESCE(TRIM(IHCOMP), '') || '|' ||
+          COALESCE(TRIM(IHINAC), '') || '|' ||
+          COALESCE(TO_VARCHAR(\"IHINV#\"), '') || '|' ||
+          COALESCE(TO_VARCHAR(IHOBDT), '') || '|' ||
+          COALESCE(TO_VARCHAR(IHARBH), '') || '|' ||
+          COALESCE(TO_VARCHAR(IHINDT), '') || '|' ||
+          COALESCE(TO_VARCHAR(\"IHREF#\"), '') || '|' ||
+          COALESCE(TRIM(IHMSID), '') || '|' ||
+          COALESCE(TO_VARCHAR(IHIAMT), '') || '|' ||
+          COALESCE(TRIM(IHINFF), '') || '|' ||
+          COALESCE(TRIM(IHINGP), '') || '|' ||
+          COALESCE(TO_VARCHAR(IHREFA), '') || '|' ||
+          COALESCE(TRIM(IHUSER), '') || '|' ||
+          COALESCE(TO_VARCHAR(IHUDAT), '') || '|' ||
+          COALESCE(TO_VARCHAR(IHUTIM), '')
+        ) AS PK_ODS_IFP_BIPIHH_CHKSUM_ID,
+
+        CURRENT_TIMESTAMP::TIMESTAMP_NTZ(9) AS SYS_CREATE_DTM,
+        INS_BATCH_ID::NUMBER(19,0) AS SYS_EXEC_ID,
+        CURRENT_TIMESTAMP::TIMESTAMP_NTZ(9) AS SYS_LAST_UPDATE_DTM,
+        {{ trim_string('DTL__CAPXACTION') }} AS SYS_ACTION_CD,
+        CASE WHEN {{ trim_string('DTL__CAPXACTION') }} = 'D' OR {{ trim_string('PRIMARY_KEY_CHANGE') }} = 'Y' THEN 'Y' ELSE 'N' END AS SYS_DEL_IND,
+        'Y' AS SYS_VALID_IND,
+        '' AS SYS_INVALID_DESC,
+        TO_TIMESTAMP_NTZ(SUBSTRING({{ trim_string('DTL__CAPXTIMESTAMP') }}, 1, 17), 'YYYYMMDDHHMISSFF') AS SYS_CDC_DTM,
+        {{ trim_string('DTL__CAPXUSER') }} AS SYS_CDC_LIB,
+        {{ trim_string('DTL__BI_IHCOMP') }} AS IHCOMP,
+        {{ trim_string('DTL__BI_IHINAC') }} AS IHINAC,
+        {{ trim_string('DTL__BI_IHINV') }} AS IHINV,
+        {{ trim_string('DTL__BI_IHOBDT') }} AS IHOBDT_ORIG,
+        TRY_TO_TIMESTAMP({{ trim_string('DTL__BI_IHOBDT') }}) AS IHOBDT,
+        {{ trim_string('DTL__BI_IHARBH') }} AS IHARBH,
+        {{ trim_string('DTL__BI_IHINDT') }} AS IHINDT_ORIG,
+        TRY_TO_TIMESTAMP({{ trim_string('DTL__BI_IHINDT') }}) AS IHINDT,
+        {{ trim_string('DTL__BI_IHREF') }} AS IHREF,
+        {{ trim_string('DTL__BI_IHMSID') }} AS IHMSID,
+        {{ trim_string('DTL__BI_IHIAMT') }} AS IHIAMT,
+        {{ trim_string('DTL__BI_IHINFF') }} AS IHINFF,
+        {{ trim_string('DTL__BI_IHINGP') }} AS IHINGP,
+        {{ trim_string('DTL__BI_IHREFA') }} AS IHREFA,
+        {{ trim_string('DTL__BI_IHUSER') }} AS IHUSER,
+        {{ trim_string('DTL__BI_IHUDAT') }} AS IHUDAT,
+        {{ trim_string('DTL__BI_IHUTIM') }} AS IHUTIM,
+        INSERT_TIMESTAMP AS SF_INSERT_TIMESTAMP
+    FROM GET_NEW_RECORDS
+    LEFT JOIN INS_BATCH_ID USING (BATCH_KEY_ID)
+),
+
+HISTORICAL_DATA AS (
+    SELECT 
+        PK_ODS_IFP_BIPIHH_ID,
+        PK_ODS_IFP_BIPIHH_CHKSUM_ID,
+        SYS_CREATE_DTM,
+        SYS_EXEC_ID,
+        SYS_LAST_UPDATE_DTM,
+        SYS_ACTION_CD,
+        SYS_DEL_IND,
+        SYS_VALID_IND,
+        SYS_INVALID_DESC,
+        SYS_CDC_DTM,
+        SYS_CDC_LIB,
+        IHCOMP,
+        IHINAC,
+        IHINV,
+        IHOBDT_ORIG,
+        IHOBDT,
+        IHARBH,
+        IHINDT_ORIG,
+        IHINDT,
+        IHREF,
+        IHMSID,
+        IHIAMT,
+        IHINFF,
+        IHINGP,
+        IHREFA,
+        IHUSER,
+        IHUDAT,
+        IHUTIM,
+        SF_INSERT_TIMESTAMP
+    FROM {{ source('STAGING','STG_ODS_IFP_BIPIHH_HIST') }}
+    {% if is_incremental() %}
+    WHERE SYS_CDC_DTM >= '{{ get_max_event_time('SYS_CDC_DTM') }}'
+    {% endif %}
+), 
+
+UNION_RECORDS AS (
+    SELECT * FROM CURRENT_DELTA_DATA
+    UNION ALL
+    SELECT * FROM HISTORICAL_DATA
+),
+
+Source_Data AS (
+    SELECT *, ROW_NUMBER() OVER (PARTITION BY PK_ODS_IFP_BIPIHH_CHKSUM_ID ORDER BY SYS_CDC_DTM DESC) AS ROW_NUM
+    FROM UNION_RECORDS
+),
+
+BIPIHH AS (
+    SELECT * FROM Source_Data WHERE ROW_NUM = 1
+)
+
+SELECT 
+    PK_ODS_IFP_BIPIHH_ID,
+    PK_ODS_IFP_BIPIHH_CHKSUM_ID,
+    SYS_CREATE_DTM,
+    SYS_EXEC_ID,
+    SYS_LAST_UPDATE_DTM,
+    SYS_ACTION_CD,
+    SYS_DEL_IND,
+    SYS_VALID_IND,
+    SYS_INVALID_DESC,
+    SYS_CDC_DTM,
+    SYS_CDC_LIB,
+    IHCOMP,
+    IHINAC,
+    IHINV,
+    IHOBDT_ORIG,
+    IHOBDT,
+    IHARBH,
+    IHINDT_ORIG,
+    IHINDT,
+    IHREF,
+    IHMSID,
+    IHIAMT,
+    IHINFF,
+    IHINGP,
+    IHREFA,
+    IHUSER,
+    IHUDAT,
+    IHUTIM,
+    SF_INSERT_TIMESTAMP
+FROM BIPIHH
 
 
 import csv
